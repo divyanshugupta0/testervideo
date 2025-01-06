@@ -356,13 +356,11 @@
         bottom: 0;
         left: 0;
         width: 100%;
-        height: 200px;
         display: flex;
         justify-content: space-around;
-        align-items: flex-end;
-        padding-bottom: 50px;
+        padding: 20px;
     }
-
+    
     .swipe-button {
         width: 64px;
         height: 64px;
@@ -371,39 +369,21 @@
         align-items: center;
         justify-content: center;
         font-size: 24px;
-        position: relative;
-        transition: transform 0.3s;
+        cursor: pointer;
     }
-
-    .swipe-button::after {
-        content: "";
-        position: absolute;
-        bottom: -40px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 4px;
-        height: 40px;
-        background: currentColor;
-    }
-
+    
     .swipe-accept {
         background: #4CAF50;
-        color: #4CAF50;
+        color: white;
     }
-
+    
     .swipe-decline {
         background: #dc3545;
-        color: #dc3545;
+        color: white;
     }
 
     .swipe-arrow {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        color: white;
-        font-size: 24px;
-        animation: bounce 1s infinite;
+        display: none;
     }
 
     @keyframes bounce {
@@ -528,6 +508,9 @@ let isAudioOnly = false;
 let isSpeakerOn = false;
 let currentCameraFacing = 'user';
 let faceDetectionInterval;
+let ringtone = document.getElementById('ringtone');
+let callingTone = document.getElementById('calling-tone');
+
 
 // DOM Elements
 const mainVideo = document.getElementById('main-video');
@@ -590,11 +573,8 @@ function initializePeer() {
             document.getElementById('mobile-call-type').textContent = 
                 call.metadata?.isAudioOnly ? 'Audio call incoming...' : 'Video call incoming...';
     
-            const mobileAccept = document.getElementById('mobile-accept');
-            const mobileDecline = document.getElementById('mobile-decline');
-    
-            // Mobile accept handler
-            mobileAccept.onclick = async () => {
+            // Simple click handlers for mobile
+            document.getElementById('mobile-accept').onclick = async () => {
                 try {
                     stopRingtone();
                     mobileUI.style.display = 'none';
@@ -613,8 +593,7 @@ function initializePeer() {
                 }
             };
     
-            // Mobile decline handler
-            mobileDecline.onclick = () => {
+            document.getElementById('mobile-decline').onclick = () => {
                 stopRingtone();
                 mobileUI.style.display = 'none';
                 call.close();
@@ -632,7 +611,6 @@ function initializePeer() {
             desktopModal.style.display = 'block';
             modalBackdrop.style.display = 'block';
             
-            // Desktop accept handler
             document.getElementById('accept-call').onclick = async () => {
                 try {
                     stopRingtone();
@@ -653,7 +631,6 @@ function initializePeer() {
                 }
             };
     
-            // Desktop decline handler
             document.getElementById('reject-call').onclick = () => {
                 stopRingtone();
                 desktopModal.style.display = 'none';
@@ -799,20 +776,33 @@ function handleCall(call, isCaller = false) {
     
     call.on('stream', async (stream) => {
         console.log('Received remote stream');
-        if (!isCaller) { // Only stop ringtone for receiver
+        if (!isCaller) {
             stopRingtone();
         }
-        stopCallingTone(); // Stop calling tone for both
+        stopCallingTone();
         remoteStream = stream;
         
-        // Only close modals for receiver
-        if (!isCaller) {
-            hideModal(document.getElementById('incoming-call-modal'));
-            document.querySelector('.incoming-call-mobile').style.display = 'none';
-        }
-        
         try {
-            // Rest of the stream handling code...
+            // Set remote stream to main video if local stream is in PIP
+            if (isLocalStreamMain) {
+                mainVideo.srcObject = remoteStream;
+                pipVideo.srcObject = localStream;
+            } else {
+                pipVideo.srcObject = remoteStream;
+                mainVideo.srcObject = localStream;
+            }
+            
+            // Ensure video tracks are enabled
+            stream.getVideoTracks().forEach(track => track.enabled = true);
+            stream.getAudioTracks().forEach(track => track.enabled = true);
+            
+            // Setup quality monitoring
+            if (call.peerConnection) {
+                setupConnectionQualityHandling(call.peerConnection);
+                monitorStreamQuality(call.peerConnection);
+            }
+            
+            updateStatus('Connected');
         } catch (error) {
             console.error('Stream error:', error);
             updateStatus('Stream connection failed');
@@ -822,9 +812,6 @@ function handleCall(call, isCaller = false) {
     call.on('close', () => {
         clearInterval(statsInterval);
         cleanup();
-        // Close modals on call end
-        hideModal(document.getElementById('incoming-call-modal'));
-        document.querySelector('.incoming-call-mobile').style.display = 'none';
         updateStatus('Call ended');
         stopCallingTone();
         stopRingtone();
@@ -1203,36 +1190,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    let touchStartY = 0;
-
-
-        function setupMobileSwipeHandlers() {
-            const acceptBtn = document.getElementById('mobile-accept');
-            const declineBtn = document.getElementById('mobile-decline');
-
-            [acceptBtn, declineBtn].forEach(btn => {
-                btn.addEventListener('touchstart', handleTouchStart);
-                btn.addEventListener('touchmove', handleTouchMove);
-                btn.addEventListener('touchend', handleTouchEnd);
-            });
-        }
-
-        // Touch handlers for mobile UI
-function handleTouchStart(e) {
-    touchStartY = e.touches[0].clientY;
-    activeButton = e.target.closest('.swipe-button');
-}
-
-function handleTouchMove(e) {
-    if (!activeButton) return;
     
-    const touchY = e.touches[0].clientY;
-    const deltaY = touchStartY - touchY;
-    
-    if (deltaY > 0) {
-        activeButton.style.transform = `translateY(-${Math.min(deltaY, 100)}px)`;
-    }
-}
 
 // Utility functions
 function cleanup() {
@@ -1248,22 +1206,89 @@ function cleanup() {
     updateStatus('Call ended');
 }
 
-function handleTouchEnd(e) {
-    if (!activeButton) return;
-    
-    const translateY = new WebKitCSSMatrix(window.getComputedStyle(activeButton).transform).m42;
-    if (Math.abs(translateY) > 80) {
-        if (activeButton.id === 'mobile-accept') {
-            activeButton.onclick(); // Trigger the click handler
-        } else if (activeButton.id === 'mobile-decline') {
-            activeButton.onclick(); // Trigger the click handler
-        }
-    }
-    
-    activeButton.style.transform = '';
-    activeButton = null;
-}
 
+peer.on('call', async (call) => {
+    console.log('Incoming call detected');
+    updateStatus('Incoming call...');
+    currentCall = call;
+    playRingtone();
+
+    const isMobile = window.innerWidth <= 768;
+    
+    if (isMobile) {
+        const mobileUI = document.querySelector('.incoming-call-mobile');
+        mobileUI.style.display = 'block';
+        document.getElementById('mobile-call-type').textContent = 
+            call.metadata?.isAudioOnly ? 'Audio call incoming...' : 'Video call incoming...';
+
+        // Simple click handlers for mobile
+        document.getElementById('mobile-accept').onclick = async () => {
+            try {
+                stopRingtone();
+                mobileUI.style.display = 'none';
+                
+                if (!localStream) {
+                    const success = await setupMediaStream();
+                    if (!success) throw new Error('Failed to setup media stream');
+                }
+                
+                call.answer(localStream);
+                handleCall(call);
+                updateStatus('Connected');
+            } catch (error) {
+                console.error('Error accepting call:', error);
+                updateStatus('Failed to accept call');
+            }
+        };
+
+        document.getElementById('mobile-decline').onclick = () => {
+            stopRingtone();
+            mobileUI.style.display = 'none';
+            call.close();
+            currentCall = null;
+            updateStatus('Call rejected');
+        };
+
+    } else {
+        const desktopModal = document.getElementById('incoming-call-modal');
+        const modalBackdrop = document.querySelector('.modal-backdrop');
+        
+        document.getElementById('incoming-call-type').textContent = 
+            call.metadata?.isAudioOnly ? 'Audio call incoming...' : 'Video call incoming...';
+        
+        desktopModal.style.display = 'block';
+        modalBackdrop.style.display = 'block';
+        
+        document.getElementById('accept-call').onclick = async () => {
+            try {
+                stopRingtone();
+                desktopModal.style.display = 'none';
+                modalBackdrop.style.display = 'none';
+                
+                if (!localStream) {
+                    const success = await setupMediaStream();
+                    if (!success) throw new Error('Failed to setup media stream');
+                }
+                
+                call.answer(localStream);
+                handleCall(call);
+                updateStatus('Connected');
+            } catch (error) {
+                console.error('Error accepting call:', error);
+                updateStatus('Failed to accept call');
+            }
+        };
+
+        document.getElementById('reject-call').onclick = () => {
+            stopRingtone();
+            desktopModal.style.display = 'none';
+            modalBackdrop.style.display = 'none';
+            call.close();
+            currentCall = null;
+            updateStatus('Call rejected');
+        };
+    }
+});
         function acceptCall() {
             document.querySelector('.incoming-call-mobile').style.display = 'none';
             // Your existing accept call logic
@@ -1275,8 +1300,8 @@ function handleTouchEnd(e) {
         }
 
 
-        let ringtone = document.getElementById('ringtone');
-let callingTone = document.getElementById('calling-tone');
+        ringtone = document.getElementById('ringtone');
+        callingTone = document.getElementById('calling-tone');
 
 // Audio control functions
 function playRingtone() {
