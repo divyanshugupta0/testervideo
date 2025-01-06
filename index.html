@@ -590,7 +590,38 @@ function initializePeer() {
             document.getElementById('mobile-call-type').textContent = 
                 call.metadata?.isAudioOnly ? 'Audio call incoming...' : 'Video call incoming...';
     
-            // Rest of the mobile UI handling code...
+            const mobileAccept = document.getElementById('mobile-accept');
+            const mobileDecline = document.getElementById('mobile-decline');
+    
+            // Mobile accept handler
+            mobileAccept.onclick = async () => {
+                try {
+                    stopRingtone();
+                    mobileUI.style.display = 'none';
+                    
+                    if (!localStream) {
+                        const success = await setupMediaStream();
+                        if (!success) throw new Error('Failed to setup media stream');
+                    }
+                    
+                    call.answer(localStream);
+                    handleCall(call);
+                    updateStatus('Connected');
+                } catch (error) {
+                    console.error('Error accepting call:', error);
+                    updateStatus('Failed to accept call');
+                }
+            };
+    
+            // Mobile decline handler
+            mobileDecline.onclick = () => {
+                stopRingtone();
+                mobileUI.style.display = 'none';
+                call.close();
+                currentCall = null;
+                updateStatus('Call rejected');
+            };
+    
         } else {
             const desktopModal = document.getElementById('incoming-call-modal');
             const modalBackdrop = document.querySelector('.modal-backdrop');
@@ -601,9 +632,10 @@ function initializePeer() {
             desktopModal.style.display = 'block';
             modalBackdrop.style.display = 'block';
             
+            // Desktop accept handler
             document.getElementById('accept-call').onclick = async () => {
-                stopRingtone();
                 try {
+                    stopRingtone();
                     desktopModal.style.display = 'none';
                     modalBackdrop.style.display = 'none';
                     
@@ -614,18 +646,20 @@ function initializePeer() {
                     
                     call.answer(localStream);
                     handleCall(call);
-                    updateStatus('Call connected');
+                    updateStatus('Connected');
                 } catch (error) {
                     console.error('Error accepting call:', error);
                     updateStatus('Failed to accept call');
                 }
             };
-
+    
+            // Desktop decline handler
             document.getElementById('reject-call').onclick = () => {
+                stopRingtone();
                 desktopModal.style.display = 'none';
                 modalBackdrop.style.display = 'none';
                 call.close();
-                stopRingtone();
+                currentCall = null;
                 updateStatus('Call rejected');
             };
         }
@@ -1214,24 +1248,21 @@ function cleanup() {
     updateStatus('Call ended');
 }
 
-        function handleTouchEnd() {
-            if (!activeButton) return;
-            
-            const translateY = new WebKitCSSMatrix(window.getComputedStyle(activeButton).transform).m42;
-            
-            if (Math.abs(translateY) > 80) {
-                // Swipe completed
-                if (activeButton.id === 'mobile-accept') {
-                    acceptCall();
-                } else {
-                    rejectCall();
-                }
-            }
-            
-            // Reset position
-            activeButton.style.transform = '';
-            activeButton = null;
+function handleTouchEnd(e) {
+    if (!activeButton) return;
+    
+    const translateY = new WebKitCSSMatrix(window.getComputedStyle(activeButton).transform).m42;
+    if (Math.abs(translateY) > 80) {
+        if (activeButton.id === 'mobile-accept') {
+            activeButton.onclick(); // Trigger the click handler
+        } else if (activeButton.id === 'mobile-decline') {
+            activeButton.onclick(); // Trigger the click handler
         }
+    }
+    
+    activeButton.style.transform = '';
+    activeButton = null;
+}
 
         function acceptCall() {
             document.querySelector('.incoming-call-mobile').style.display = 'none';
