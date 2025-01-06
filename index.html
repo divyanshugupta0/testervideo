@@ -803,13 +803,17 @@ async function handleIncomingCall(call) {
     }
 }
 //handle call from server
-async function handleCall(call) {
+function handleCall(call) {
     let statsInterval;
     
     call.on('stream', async (stream) => {
         console.log('Received remote stream');
         stopCallingTone();
         remoteStream = stream;
+        
+        // Close any open modals for both caller and receiver
+        hideModal(document.getElementById('incoming-call-modal'));
+        document.querySelector('.incoming-call-mobile').style.display = 'none';
         
         try {
             if (mainVideo.srcObject !== stream) {
@@ -836,6 +840,9 @@ async function handleCall(call) {
     call.on('close', () => {
         clearInterval(statsInterval);
         cleanup();
+        // Close modals on call end
+        hideModal(document.getElementById('incoming-call-modal'));
+        document.querySelector('.incoming-call-mobile').style.display = 'none';
         updateStatus('Call ended');
         stopCallingTone();
         stopRingtone();
@@ -844,6 +851,9 @@ async function handleCall(call) {
     call.on('error', (err) => {
         console.error('Call error:', err);
         cleanup();
+        // Close modals on error
+        hideModal(document.getElementById('incoming-call-modal'));
+        document.querySelector('.incoming-call-mobile').style.display = 'none';
         updateStatus('Call error occurred');
         stopCallingTone();
         stopRingtone();
@@ -967,13 +977,16 @@ async function lockScreenOrientation() {
 
 function cleanup() {
     stopCallingTone();
-        stopRingtone();
+    stopRingtone();
     if (remoteStream) {
         remoteStream.getTracks().forEach(track => track.stop());
     }
     if (mainVideo.srcObject) {
         mainVideo.srcObject = null;
     }
+    // Close all modals during cleanup
+    hideModal(document.getElementById('incoming-call-modal'));
+    document.querySelector('.incoming-call-mobile').style.display = 'none';
     currentCall = null;
     updateStatus('Call ended');
 }
@@ -1044,8 +1057,9 @@ function hideModal(modalElement) {
         modalElement.style.display = 'none';
         document.querySelector('.modal-backdrop').style.display = 'none';
     }
+    // Also hide mobile UI
+    document.querySelector('.incoming-call-mobile').style.display = 'none';
 }
-
 // Add event listeners for modal backdrop
 document.addEventListener('DOMContentLoaded', () => {
     const modalBackdrop = document.querySelector('.modal-backdrop');
