@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Video Call App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f2f2f2;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .connection-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .peer-id-display {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .copy-button {
+            padding: 5px 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .video-grid {
+            position: relative;
+            width: 100%;
+            height: 100vh; /* Full viewport height */
+            background: black;
+            overflow: hidden;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Changed to cover for better mobile fit */
+        }
+
+        .pip-video {
+            position: absolute;
+            width: 80px;
+            height: 120px;
+            right: 10px;
+            top: 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            z-index: 10;
+            border: 2px solid white;
+            background: black;
+        }
+
+        .pip-video video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .pip-video:hover {
+            transform: scale(1.05);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.5));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .controls.visible {
+            opacity: 1;
+        }
+
+
+
+        .control-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            z-index: 855;
+        }
+
+        .control-button.end-call {
+            background: #ff4444;
+        }
+
+        .control-button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .control-button.end-call:hover {
+            background: #ff6666;
+        }
+
+        .video-grid:hover .controls,
+        .video-grid.touch .controls {
+            opacity: 1;
+        }
+
+        .call-type-selector {
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .call-type-button {
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: none;
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .call-type-button.active {
+            background: #45a049;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+
+        .speaker-control {
+            display: none;
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255    ,0.2);
+            padding: 10px;
+            border-radius: 20px;
+            z-index: 11;
+        }
+
+        .proximity-dark {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 1000;
+            display: none;
+        }
+
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1000;
+            width: 80%;
+            max-width: 300px;
+            text-align: center;
+        }
+
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+
+        .status-message {
+            text-align: center;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            background: #e9ecef;
+        }
+
+        @media (max-width: 768px) {
+            .pip-video {
+                width: 80px;
+                height: 120px;
+            }
+            .video-grid {
+                aspect-ratio: 9/16;
+            }
+            
+
+            .controls {
+                padding: 30px 20px;
+            }
+
+            .control-button {
+                width: 44px;
+                height: 44px;
+            }
+            .modal {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 20%;
+                z-index: 1000;
+                justify-content: center;
+                margin-left: 50%;
+                margin-top: 50%;
+            }
+            .control-button{
+                z-index: 999;
+            }
+        }
+
+        .canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        
+
+        .modal {
+          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 20%;
+          z-index: 1000;
+          justify-content: center;
+          margin-left: 50%;
+          margin-top: 15%;
+      }
+      
+      .modal-content {
+          position: fixed;
+          top: 50%;
+          left: 0%;
+          transform: translate(-50%, -50%);
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          max-width: 400px;
+          width: 90%;
+          text-align: center;
+          align-content: center;
+          overflow: auto;
+      }
+      
+      .permission-buttons {
+          margin-top: 20px;
+          display: flex;
+          justify-content: center;
+          gap: 10px;
+      }
+
+
+      .incoming-call-mobile {
+        display: none; /* Hidden by default */
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.9);
+        z-index: 1000;
+        color: white;
+        text-align: center;
+    }
+
+    .caller-info {
+        position: absolute;
+        top: 30%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+    }
+
+    .caller-avatar {
+        width: 80px;
+        height: 80px;
+        background: #444;
+        border-radius: 50%;
+        margin: 0 auto 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+    }
+
+    .swipe-controls {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 200px;
+        display: flex;
+        justify-content: space-around;
+        align-items: flex-end;
+        padding-bottom: 50px;
+    }
+
+    .swipe-button {
+        width: 64px;
+        height: 64px;
+        border-radius: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        position: relative;
+        transition: transform 0.3s;
+    }
+
+    .swipe-button::after {
+        content: "";
+        position: absolute;
+        bottom: -40px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 4px;
+        height: 40px;
+        background: currentColor;
+    }
+
+    .swipe-accept {
+        background: #4CAF50;
+        color: #4CAF50;
+    }
+
+    .swipe-decline {
+        background: #dc3545;
+        color: #dc3545;
+    }
+
+    .swipe-arrow {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: white;
+        font-size: 24px;
+        animation: bounce 1s infinite;
+    }
+
+    @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    /* Hide mobile UI on desktop */
+    @media (min-width: 769px) {
+        .incoming-call-mobile {
+            display: none !important;
+        }
+    }
+
+    /* Show mobile UI on mobile devices */
+    @media (max-width: 768px) {
+        #incoming-call-modal {
+            display: none !important;
+        }
+    }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video Call App</h1>
+        
+        <div class="status-message" id="status-message">Initializing...</div>
+        
+        <div class="connection-section">
+            <div class="call-type-selector">
+                <button id="video-call-btn" class="call-type-button active">Video Call</button>
+                <button id="audio-call-btn" class="call-type-button">Audio Call</button>
+            </div>
+
+            <div class="peer-id-display">
+                <span id="peer-id-text">Your Peer ID: Generating...</span>
+                <button id="copy-id" class="copy-button">Copy ID</button>
+            </div>
+            
+            <div>
+                <input type="text" id="connection-id" placeholder="Enter peer's ID to call">
+                <button id="call-btn">Make Call</button>
+            </div>
+        </div>
+
+        <div class="video-grid">
+            <div class="video-container">
+                <video id="main-video" autoplay playsinline></video>
+                <canvas id="face-canvas" class="canvas-overlay"></canvas>
+            </div>
+            <div class="pip-video">
+                <video id="pip-video" autoplay playsinline muted></video>
+            </div>
+            <div class="controls">
+                <button class="control-button toggle-video">📹</button>
+                <button class="control-button toggle-audio">🎤</button>
+                <button class="control-button end-call">📞</button>
+                <button class="control-button toggle-pip">⤢</button>
+            </div>
+            <div class="speaker-control">
+                <button class="control-button toggle-speaker">🔊</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="proximity-dark"></div>
+
+    <div id="permission-modal" class="modal">
+        <div style="font-size: 48px; margin-bottom: 15px;">📹</div>
+        <div style="margin-bottom: 20px;">
+            This app needs access to your camera and microphone for calls.
+        </div>
+        <button id="allow-permission" style="background-color: #4CAF50; margin-right: 10px;">Allow Access</button>
+        <button id="deny-permission" style="background-color: #dc3545;">Deny</button>
+    </div>
+
+    <div class="incoming-call-mobile">
+        <div class="caller-info">
+            <div class="caller-avatar">👤</div>
+            <h2>Incoming Call</h2>
+            <p id="mobile-call-type">Video call incoming...</p>
+        </div>
+        <div class="swipe-controls">
+            <div class="swipe-button swipe-decline" id="mobile-decline">📞</div>
+            <div class="swipe-button swipe-accept" id="mobile-accept">📞</div>
+        </div>
+        <div class="swipe-arrow">↑</div>
+    </div>
+    <!-- Update your modal HTML structure -->
+<div id="incoming-call-modal" class="modal">
+    <h3>Incoming Call</h3>
+    <p id="incoming-call-type">Video call incoming...</p>
+    <button id="accept-call" style="background-color: #4CAF50;">Accept</button>
+    <button id="reject-call" style="background-color: #dc3545;">Reject</button>
+</div>
+
+<div class="modal-backdrop"></div>
+
+    <div class="modal-backdrop"></div>
+    <video id="pipVideo" autoplay playsinline></video>
+
+    <audio id="ringtone" loop>
+        <source src="https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.7/sounds/bell_ring.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="calling-tone" loop>
+        <source src="https://cdnjs.cloudflare.com/ajax/libs/ion-sound/3.0.7/sounds/bell_ring.mp3" type="audio/mpeg">
+    </audio>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+    <script>
+        // Global variables
+let peer;
+let localStream;
+let currentCall;
+let remoteStream;
+let isLocalStreamMain = true;
+let isVideoEnabled = true;
+let isAudioEnabled = true;
+let isAudioOnly = false;
+let isSpeakerOn = false;
+let currentCameraFacing = 'user';
+let faceDetectionInterval;
+
+// DOM Elements
+const mainVideo = document.getElementById('main-video');
+const pipVideo = document.getElementById('pip-video');
+const faceCanvas = document.getElementById('face-canvas');
+const callBtn = document.getElementById('call-btn');
+const connectionIdInput = document.getElementById('connection-id');
+const peerIdText = document.getElementById('peer-id-text');
+const copyIdBtn = document.getElementById('copy-id');
+const statusMessage = document.getElementById('status-message');
+const permissionModal = document.getElementById('permission-modal');
+const incomingCallModal = document.getElementById('incoming-call-modal');
+const modalBackdrop = document.querySelector('.modal-backdrop');
+const acceptCallBtn = document.getElementById('accept-call');
+const rejectCallBtn = document.getElementById('reject-call');
+const videoGrid = document.querySelector('.video-grid');
+
+
+
+// Initialize PeerJS connection
+function initializePeer() {
+    updateStatus('Initializing connection...');
+    
+    peer = new Peer({
+        config: {
+            iceServers: [
+                { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                {
+                    urls: 'turn:numb.viagenie.ca',
+                    username: 'webrtc@live.com',
+                    credential: 'muazkh'
+                }
+            ],
+            iceTransportPolicy: 'all',
+            iceCandidatePoolSize: 10,
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
+        }
+    });
+
+    peer.on('open', id => {
+        peerIdText.textContent = `Your Peer ID: ${id}`;
+        updateStatus('Ready');
+        setupNetworkQualityMonitoring();
+    });
+
+    peer.on('call', async (call) => {
+        console.log('Incoming call detected');
+        updateStatus('Incoming call...');
+        currentCall = call;
+        playRingtone();
+
+        const isMobile = window.innerWidth <= 768;
+        
+        if (isMobile) {
+            const mobileUI = document.querySelector('.incoming-call-mobile');
+            mobileUI.style.display = 'block';
+            document.getElementById('mobile-call-type').textContent = 
+                call.metadata?.isAudioOnly ? 'Audio call incoming...' : 'Video call incoming...';
+        
+            // Handle mobile swipe for accept
+            document.getElementById('mobile-accept').addEventListener('touchstart', handleTouchStart);
+            document.getElementById('mobile-accept').addEventListener('touchmove', handleTouchMove);
+            document.getElementById('mobile-accept').addEventListener('touchend', async (e) => {
+                if (activeButton && activeButton.id === 'mobile-accept') {
+                    const translateY = new WebKitCSSMatrix(window.getComputedStyle(activeButton).transform).m42;
+                    if (Math.abs(translateY) > 80) {
+                        stopRingtone();
+                        mobileUI.style.display = 'none';
+                        try {
+                            if (!localStream) {
+                                const success = await setupMediaStream();
+                                if (!success) throw new Error('Failed to setup media stream');
+                            }
+                            call.answer(localStream);
+                            currentCall = call;
+                            handleCall(call);
+                            updateStatus('Call connected');
+                        } catch (error) {
+                            console.error('Error accepting call:', error);
+                            updateStatus('Failed to accept call');
+                        }
+                    }
+                    activeButton.style.transform = '';
+                    activeButton = null;
+                }
+            });
+
+            // Handle mobile swipe for decline
+            document.getElementById('mobile-decline').addEventListener('touchstart', handleTouchStart);
+            document.getElementById('mobile-decline').addEventListener('touchmove', handleTouchMove);
+            document.getElementById('mobile-decline').addEventListener('touchend', (e) => {
+                if (activeButton && activeButton.id === 'mobile-decline') {
+                    const translateY = new WebKitCSSMatrix(window.getComputedStyle(activeButton).transform).m42;
+                    if (Math.abs(translateY) > 80) {
+                        stopRingtone();
+                        mobileUI.style.display = 'none';
+                        call.close();
+                        updateStatus('Call rejected');
+                    }
+                    activeButton.style.transform = '';
+                    activeButton = null;
+                }
+            });
+        } else {
+            const desktopModal = document.getElementById('incoming-call-modal');
+            const modalBackdrop = document.querySelector('.modal-backdrop');
+            
+            document.getElementById('incoming-call-type').textContent = 
+                call.metadata?.isAudioOnly ? 'Audio call incoming...' : 'Video call incoming...';
+            
+            desktopModal.style.display = 'block';
+            modalBackdrop.style.display = 'block';
+            
+            document.getElementById('accept-call').onclick = async () => {
+                stopRingtone();
+                try {
+                    desktopModal.style.display = 'none';
+                    modalBackdrop.style.display = 'none';
+                    
+                    if (!localStream) {
+                        const success = await setupMediaStream();
+                        if (!success) throw new Error('Failed to setup media stream');
+                    }
+                    
+                    call.answer(localStream);
+                    handleCall(call);
+                    updateStatus('Call connected');
+                } catch (error) {
+                    console.error('Error accepting call:', error);
+                    updateStatus('Failed to accept call');
+                }
+            };
+
+            document.getElementById('reject-call').onclick = () => {
+                desktopModal.style.display = 'none';
+                modalBackdrop.style.display = 'none';
+                call.close();
+                stopRingtone();
+                updateStatus('Call rejected');
+            };
+        }
+    });
+}
+// Update setupMediaStream to ensure proper constraints
+async function setupMediaStream() {
+    try {
+        const constraints = {
+            video: !isAudioOnly ? {
+                width: { ideal: 640, max: 1280 },
+                height: { ideal: 480, max: 720 },
+                frameRate: { ideal: 24, max: 30 },
+                facingMode: currentCameraFacing
+            } : false,
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        };
+
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        if (localStream) {
+            pipVideo.srcObject = localStream;
+            pipVideo.muted = true;
+            await pipVideo.play().catch(console.error);
+            updateStatus('Media ready');
+            return true;
+        }
+        return false;
+
+    } catch (error) {
+        console.error('Media setup error:', error);
+        let errorMessage = 'Failed to access media devices';
+        if (error.name === 'NotAllowedError') {
+            errorMessage = 'Camera/Microphone permission denied';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = 'No camera/microphone found';
+        } else if (error.name === 'NotReadableError') {
+            errorMessage = 'Camera/Microphone is already in use';
+        }
+        updateStatus(errorMessage);
+        return false;
+    }
+}
+
+
+
+async function checkMediaPermissions() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasPermissions = devices.some(device => device.label !== '');
+        return hasPermissions;
+    } catch (error) {
+        console.error('Permission check error:', error);
+        return false;
+    }
+}
+// Handle incoming calls
+async function handleIncomingCall(call) {
+    currentCall = call;
+    showModal(incomingCallModal);
+
+    acceptCallBtn.onclick = async () => {
+        hideModal(incomingCallModal);
+        isAudioOnly = call.metadata?.isAudioOnly || false;
+        updateUIForCallType(isAudioOnly);
+        
+        try {
+            if (!localStream) {
+                await setupMediaStream(isAudioOnly);
+            }
+            call.answer(localStream);
+            handleCall(call);
+        } catch (error) {
+            console.error('Error answering call:', error);
+            updateStatus('Failed to answer call');
+        }
+    };
+
+    rejectCallBtn.onclick = () => {
+        hideModal(incomingCallModal);
+        call.close();
+    };
+}
+
+ // Update makeCall function to ensure streams are properly set up
+ async function makeCall(peerId) {
+    updateStatus('Setting up media...');
+    
+    try {
+        if (!localStream) {
+            const success = await setupMediaStream();
+            if (!success) {
+                throw new Error('Failed to setup media devices');
+            }
+        }
+
+        if (!localStream.getTracks().length) {
+            throw new Error('No media tracks available');
+        }
+
+        const callOptions = {
+            metadata: {
+                isAudioOnly: isAudioOnly
+            }
+        };
+        
+        playCallingTone();
+        updateStatus('Initiating call...');
+        const call = peer.call(peerId, localStream, callOptions);
+        
+        if (!call) {
+            throw new Error('Failed to create call object');
+        }
+
+        currentCall = call;
+        handleCall(call);
+        updateStatus('Calling...');
+
+    } catch (error) {
+        console.error('Call error:', error);
+        updateStatus(error.message || 'Call failed');
+        stopCallingTone();
+        
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+    }
+}
+//handle call from server
+async function handleCall(call) {
+    let statsInterval;
+    
+    call.on('stream', async (stream) => {
+        console.log('Received remote stream');
+        stopCallingTone();
+        remoteStream = stream;
+        
+        try {
+            if (mainVideo.srcObject !== stream) {
+                mainVideo.srcObject = stream;
+                mainVideo.muted = false;
+                await mainVideo.play().catch(console.error);
+            }
+
+            if (pipVideo.srcObject !== localStream) {
+                pipVideo.srcObject = localStream;
+                pipVideo.muted = true;
+                await pipVideo.play().catch(console.error);
+            }
+
+            statsInterval = setInterval(() => monitorStreamQuality(call.peerConnection), 3000);
+            setupConnectionQualityHandling(call.peerConnection);
+            updateStatus('Connected');
+        } catch (error) {
+            console.error('Stream error:', error);
+            updateStatus('Stream connection failed');
+        }
+    });
+
+    call.on('close', () => {
+        clearInterval(statsInterval);
+        cleanup();
+        updateStatus('Call ended');
+        stopCallingTone();
+        stopRingtone();
+    });
+
+    call.on('error', (err) => {
+        console.error('Call error:', err);
+        cleanup();
+        updateStatus('Call error occurred');
+        stopCallingTone();
+        stopRingtone();
+    });
+}
+
+
+
+
+
+// Setup connection quality handling
+function setupConnectionQualityHandling(peerConnection) {
+    let lastBitrateCheck = Date.now();
+    let lastPacketsLost = 0;
+    let consecutiveLowQuality = 0;
+
+    setInterval(async () => {
+        try {
+            const stats = await peerConnection.getStats();
+            let currentPacketsLost = 0;
+            let currentBitrate = 0;
+
+            stats.forEach(report => {
+                if (report.type === "inbound-rtp" && report.kind === "video") {
+                    currentPacketsLost = report.packetsLost;
+                    const timeDiff = Date.now() - lastBitrateCheck;
+                    currentBitrate = (report.bytesReceived * 8) / timeDiff;
+                }
+            });
+
+            const packetLossRate = (currentPacketsLost - lastPacketsLost) / 100;
+            
+            if (packetLossRate > 0.1 || currentBitrate < 100000) {
+                consecutiveLowQuality++;
+                if (consecutiveLowQuality >= 3) {
+                    await adjustMediaQuality(1);
+                }
+            } else {
+                consecutiveLowQuality = 0;
+                if (currentBitrate > 1000000) {
+                    await adjustMediaQuality(3);
+                }
+            }
+
+            lastPacketsLost = currentPacketsLost;
+            lastBitrateCheck = Date.now();
+        } catch (error) {
+            console.error('Stats error:', error);
+        }
+    }, 2000);
+}
+
+
+
+
+// Network and quality monitoring functions
+function setupNetworkQualityMonitoring() {
+    if ('connection' in navigator) {
+        navigator.connection.addEventListener('change', function() {
+            adjustMediaQuality(navigator.connection.downlink);
+        });
+    }
+}
+
+function monitorStreamQuality(peerConnection) {
+    peerConnection.getStats(null).then(stats => {
+        stats.forEach(report => {
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                const lossRate = (report.packetsLost / (report.packetsLost + report.packetsReceived)) * 100;
+                if (lossRate > 10) {
+                    adjustMediaQuality(1); // Reduce quality
+                } else if (lossRate < 5) {
+                    adjustMediaQuality(3); // Increase quality
+                }
+            }
+        });
+    });
+}
+
+async function adjustMediaQuality(bandwidth) {
+    if (!currentCall?.peerConnection) return;
+    
+    const videoSender = currentCall.peerConnection.getSenders()
+        .find(s => s.track?.kind === 'video');
+    
+    if (videoSender) {
+        const parameters = videoSender.getParameters();
+        if (!parameters.encodings) parameters.encodings = [{}];
+        
+        if (bandwidth < 1) {
+            parameters.encodings[0].maxBitrate = 250000;
+            parameters.encodings[0].scaleResolutionDownBy = 2.0;
+        } else if (bandwidth < 2) {
+            parameters.encodings[0].maxBitrate = 500000;
+            parameters.encodings[0].scaleResolutionDownBy = 1.5;
+        } else {
+            parameters.encodings[0].maxBitrate = 2500000;
+            parameters.encodings[0].scaleResolutionDownBy = 1.0;
+        }
+        
+        try {
+            await videoSender.setParameters(parameters);
+        } catch (error) {
+            console.error('Failed to update encoding parameters:', error);
+        }
+    }
+}
+
+
+
+async function lockScreenOrientation() {
+    try {
+        if (screen.orientation && screen.orientation.lock) {
+            await screen.orientation.lock('portrait');
+        }
+    } catch (error) {
+        console.log('Screen orientation lock failed:', error);
+    }
+}
+
+
+function cleanup() {
+    stopCallingTone();
+        stopRingtone();
+    if (remoteStream) {
+        remoteStream.getTracks().forEach(track => track.stop());
+    }
+    if (mainVideo.srcObject) {
+        mainVideo.srcObject = null;
+    }
+    currentCall = null;
+    updateStatus('Call ended');
+}
+
+// Switch camera function
+async function switchCamera() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        if (videoDevices.length < 2) {
+            updateStatus('No additional cameras found');
+            return;
+        }
+
+        currentCameraFacing = currentCameraFacing === 'user' ? 'environment' : 'user';
+        
+        const newStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: currentCameraFacing },
+            audio: localStream.getAudioTracks().length > 0
+        });
+
+        const [videoTrack] = newStream.getVideoTracks();
+        const [oldVideoTrack] = localStream.getVideoTracks();
+        localStream.removeTrack(oldVideoTrack);
+        localStream.addTrack(videoTrack);
+
+        pipVideo.srcObject = localStream;
+
+        if (currentCall) {
+            const sender = currentCall.peerConnection.getSenders()
+                .find(s => s.track.kind === 'video');
+            if (sender) {
+                await sender.replaceTrack(videoTrack);
+            }
+        }
+    } catch (error) {
+        console.error('Camera switch failed:', error);
+        updateStatus('Failed to switch camera');
+    }
+}
+function showControls() {
+    const controls = document.querySelector('.controls');
+    controls.classList.add('visible');
+    
+    if (controlsTimeout) {
+        clearTimeout(controlsTimeout);
+    }
+    
+    controlsTimeout = setTimeout(() => {
+        controls.classList.remove('visible');
+    }, 3000);
+}
+
+function updateStatus(message) {
+    statusMessage.textContent = message;
+}
+
+function showModal(modalElement) {
+    if (modalElement) {
+        modalElement.style.display = 'block';
+        document.querySelector('.modal-backdrop').style.display = 'block';
+    }
+}
+
+function hideModal(modalElement) {
+    if (modalElement) {
+        modalElement.style.display = 'none';
+        document.querySelector('.modal-backdrop').style.display = 'none';
+    }
+}
+
+// Add event listeners for modal backdrop
+document.addEventListener('DOMContentLoaded', () => {
+    const modalBackdrop = document.querySelector('.modal-backdrop');
+    
+    modalBackdrop.addEventListener('click', (event) => {
+        if (event.target === modalBackdrop) {
+            const desktopModal = document.getElementById('incoming-call-modal');
+            hideModal(desktopModal);
+            if (currentCall) {
+                currentCall.close();
+                updateStatus('Call rejected');
+            }
+        }
+    });
+});
+
+// Add resize handler for responsive behavior
+window.addEventListener('resize', () => {
+    const isMobile = window.innerWidth <= 768;
+    const desktopModal = document.getElementById('incoming-call-modal');
+    const mobileUI = document.querySelector('.incoming-call-mobile');
+    
+    if (currentCall) {
+        if (isMobile) {
+            desktopModal.style.display = 'none';
+            mobileUI.style.display = 'block';
+        } else {
+            desktopModal.style.display = 'block';
+            mobileUI.style.display = 'none';
+        }
+    }
+});
+
+
+
+function switchVideos() {
+    const temp = mainVideo.srcObject;
+    mainVideo.srcObject = pipVideo.srcObject;
+    pipVideo.srcObject = temp;
+    isLocalStreamMain = !isLocalStreamMain;
+}
+
+function endCall() {
+    stopCallingTone();
+        stopRingtone();
+    if (currentCall) {
+        currentCall.close();
+    }
+    if (document.pictureInPictureElement) {
+        document.exitPictureInPicture();
+    }
+    pipVideo.srcObject = localStream;
+    mainVideo.srcObject = null;
+    currentCall = null;
+    updateStatus('Call ended');
+}
+
+function updateUIForCallType(isAudioOnly) {
+    videoGrid.style.display = isAudioOnly ? 'none' : 'flex';
+    document.querySelector('.speaker-control').style.display = isAudioOnly ? 'block' : 'none';
+    document.querySelector('.toggle-video').style.display = isAudioOnly ? 'none' : 'block';
+}
+
+// Error handlers
+function handlePeerError(error) {
+    console.error('Peer error:', error);
+    if (error.type === 'network') {
+        updateStatus('Network error. Check your connection.');
+        peer.reconnect();
+    } else if (error.type === 'peer-unavailable') {
+        updateStatus('Peer not found. Check the ID.');
+    } else {
+        updateStatus('Connection error. Retrying...');
+        peer.reconnect();
+    }
+}
+
+function handlePeerDisconnect() {
+    updateStatus('Connection lost. Reconnecting...');
+    peer.reconnect();
+}
+
+// Event Listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize PeerJS
+    initializePeer();
+    lockScreenOrientation();
+    videoGrid.addEventListener('click', showControls);
+
+    // Call button
+    callBtn.addEventListener('click', () => {
+        const peerId = connectionIdInput.value.trim();
+        if (peerId) {
+            makeCall(peerId);
+        } else {
+            updateStatus('Please enter a peer ID');
+        }
+    });
+    window.addEventListener('click', (event) => {
+        if (event.target === document.querySelector('.modal-backdrop')) {
+            hideModal(document.getElementById('incoming-call-modal'));
+            if (currentCall) {
+                currentCall.close();
+            }
+            updateStatus('Call cancelled');
+        }
+    });
+
+    // Video controls
+    document.querySelector('.toggle-pip').addEventListener('click', async () => {
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            } else if (document.pictureInPictureEnabled) {
+                await mainVideo.requestPictureInPicture();
+            }
+        } catch (error) {
+            console.error('PiP failed:', error);
+            updateStatus('Picture-in-Picture not supported');
+        }
+    });
+    
+    document.querySelector('.toggle-video').addEventListener('click', () => {
+        isVideoEnabled = !isVideoEnabled;
+        localStream.getVideoTracks().forEach(track => track.enabled = isVideoEnabled);
+        document.querySelector('.toggle-video').textContent = isVideoEnabled ? '📹' : '📺';
+    });
+
+    document.querySelector('.toggle-audio').addEventListener('click', () => {
+        isAudioEnabled = !isAudioEnabled;
+        localStream.getAudioTracks().forEach(track => track.enabled = isAudioEnabled);
+        document.querySelector('.toggle-audio').textContent = isAudioEnabled ? '🎤' : '🔇';
+    });
+
+    document.querySelector('.end-call').addEventListener('click', endCall);
+
+    // Camera switch button
+    const cameraSwitchButton = document.createElement('button');
+        cameraSwitchButton.className = 'control-button switch-camera';
+        cameraSwitchButton.innerHTML = '🔄';
+        document.querySelector('.controls').appendChild(cameraSwitchButton);
+        cameraSwitchButton.addEventListener('click', switchCamera);
+    });
+    // Copy ID button
+    copyIdBtn.addEventListener('click', () => {
+        const peerId = peerIdText.textContent.split(': ')[1];
+        navigator.clipboard.writeText(peerId);
+        updateStatus('Peer ID copied to clipboard');
+    });
+
+    // Call type selector
+    document.querySelectorAll('.call-type-selector button').forEach(button => {
+        button.addEventListener('click', (event) => {
+            document.querySelector('.call-type-selector button.active').classList.remove('active');
+            event.target.classList.add('active');
+            isAudioOnly = event.target.textContent === 'Audio Call';
+            updateUIForCallType(isAudioOnly);
+        });
+    });
+
+
+    let touchStartY = 0;
+        let activeButton = null;
+
+        function handleIncomingCall(call) {
+            if (window.innerWidth <= 768) {
+                // Show mobile UI
+                document.querySelector('.incoming-call-mobile').style.display = 'block';
+                document.getElementById('mobile-call-type').textContent = 
+                    call.metadata?.isAudioOnly ? 'Audio call incoming...' : 'Video call incoming...';
+                
+                setupMobileSwipeHandlers();
+            } else {
+                // Show desktop UI
+                showModal(incomingCallModal);
+            }
+        }
+
+        function setupMobileSwipeHandlers() {
+            const acceptBtn = document.getElementById('mobile-accept');
+            const declineBtn = document.getElementById('mobile-decline');
+
+            [acceptBtn, declineBtn].forEach(btn => {
+                btn.addEventListener('touchstart', handleTouchStart);
+                btn.addEventListener('touchmove', handleTouchMove);
+                btn.addEventListener('touchend', handleTouchEnd);
+            });
+        }
+
+        // Touch handlers for mobile UI
+function handleTouchStart(e) {
+    touchStartY = e.touches[0].clientY;
+    activeButton = e.target.closest('.swipe-button');
+}
+
+function handleTouchMove(e) {
+    if (!activeButton) return;
+    
+    const touchY = e.touches[0].clientY;
+    const deltaY = touchStartY - touchY;
+    
+    if (deltaY > 0) {
+        activeButton.style.transform = `translateY(-${Math.min(deltaY, 100)}px)`;
+    }
+}
+
+// Utility functions
+function cleanup() {
+    stopCallingTone();
+    stopRingtone();
+    if (remoteStream) {
+        remoteStream.getTracks().forEach(track => track.stop());
+    }
+    if (mainVideo.srcObject) {
+        mainVideo.srcObject = null;
+    }
+    currentCall = null;
+    updateStatus('Call ended');
+}
+
+        function handleTouchEnd() {
+            if (!activeButton) return;
+            
+            const translateY = new WebKitCSSMatrix(window.getComputedStyle(activeButton).transform).m42;
+            
+            if (Math.abs(translateY) > 80) {
+                // Swipe completed
+                if (activeButton.id === 'mobile-accept') {
+                    acceptCall();
+                } else {
+                    rejectCall();
+                }
+            }
+            
+            // Reset position
+            activeButton.style.transform = '';
+            activeButton = null;
+        }
+
+        function acceptCall() {
+            document.querySelector('.incoming-call-mobile').style.display = 'none';
+            // Your existing accept call logic
+        }
+
+        function rejectCall() {
+            document.querySelector('.incoming-call-mobile').style.display = 'none';
+            // Your existing reject call logic
+        }
+
+
+        let ringtone = document.getElementById('ringtone');
+let callingTone = document.getElementById('calling-tone');
+
+// Audio control functions
+function playRingtone() {
+    ringtone.currentTime = 0;
+    ringtone.play().catch(error => console.log('Playback prevented:', error));
+}
+
+function stopRingtone() {
+    ringtone.pause();
+    ringtone.currentTime = 0;
+}
+
+function playCallingTone() {
+    callingTone.currentTime = 0;
+    callingTone.play().catch(error => console.log('Playback prevented:', error));
+}
+
+function stopCallingTone() {
+    callingTone.pause();
+    callingTone.currentTime = 0;
+}   
+
+// Handle device orientation changes
+function handleOrientationChange() {
+    const orientation = window.orientation;
+    const videoGrid = document.querySelector('.video-grid');
+    
+    if (orientation === 90 || orientation === -90) {
+        videoGrid.style.height = '100vw';
+        videoGrid.style.width = '100vh';
+    } else {
+        videoGrid.style.height = '100vh';
+        videoGrid.style.width = '100vw';
+    }
+}
+
+// Proximity sensor handling for mobile devices
+function setupProximitySensor() {
+    const proximityDark = document.querySelector('.proximity-dark');
+    
+    if ('ProximitySensor' in window) {
+        const sensor = new ProximitySensor();
+        sensor.addEventListener('reading', () => {
+            proximityDark.style.display = sensor.near ? 'block' : 'none';
+            if (sensor.near && !isAudioOnly) {
+                localStream.getVideoTracks().forEach(track => track.enabled = false);
+            } else if (!isAudioOnly) {
+                localStream.getVideoTracks().forEach(track => track.enabled = true);
+            }
+        });
+        sensor.start();
+    } else {
+        window.addEventListener('devicelight', (event) => {
+            const isNear = event.value < 50;
+            proximityDark.style.display = isNear ? 'block' : 'none';
+            if (isNear && !isAudioOnly) {
+                localStream.getVideoTracks().forEach(track => track.enabled = false);
+            } else if (!isAudioOnly) {
+                localStream.getVideoTracks().forEach(track => track.enabled = true);
+            }
+        });
+    }
+}
+
+// Initialize app features
+function initializeAppFeatures() {
+    setupProximitySensor();
+    window.addEventListener('orientationchange', handleOrientationChange);
+    setupFaceDetection().catch(console.error);
+    
+    // Double tap to switch camera
+    let lastTap = 0;
+    document.querySelector('.video-grid').addEventListener('touchend', (e) => {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        if (tapLength < 500 && tapLength > 0) {
+            switchCamera();
+            e.preventDefault();
+        }
+        lastTap = currentTime;
+    });
+}
+
+
+// Setup face detection
+async function setupFaceDetection() {
+    try {
+        await faceapi.nets.tinyFaceDetector.loadFromUri('https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/models');
+        await faceapi.nets.faceLandmark68Net.loadFromUri('https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/models');
+        
+        faceDetectionInterval = setInterval(async () => {
+            if (!isVideoEnabled || isAudioOnly) return;
+            
+            const detections = await faceapi.detectSingleFace(mainVideo, 
+                new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks();
+            
+            if (detections) {
+                const canvas = faceCanvas;
+                const displaySize = { width: mainVideo.videoWidth, height: mainVideo.videoHeight };
+                faceapi.matchDimensions(canvas, displaySize);
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+            }
+        }, 100);
+    } catch (error) {
+        console.error('Face detection setup failed:', error);
+    }
+}
+
+// Initialize when document is ready
+document.addEventListener('DOMContentLoaded', () => {
+    initializeAppFeatures();
+    
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && currentCall) {
+            localStream.getVideoTracks().forEach(track => track.enabled = false);
+        } else if (!document.hidden && currentCall && !isAudioOnly) {
+            localStream.getVideoTracks().forEach(track => track.enabled = isVideoEnabled);
+        }
+    });
+    
+    // Prevent screen sleep during calls
+    const wakeLock = async () => {
+        try {
+            if ('wakeLock' in navigator) {
+                await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {
+            console.error('Wake Lock error:', err);
+        }
+    };
+    
+    if (currentCall) wakeLock();
+});
+    </script>
+    
+    </body>
+    </html>
