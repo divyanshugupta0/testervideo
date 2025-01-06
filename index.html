@@ -853,64 +853,69 @@ async function handleIncomingCall(call) {
 function handleCall(call, isCaller = false) {
     let statsInterval;
     
+    // Clear any existing modals immediately
+    hideModal(document.getElementById('incoming-call-modal'));
+    document.querySelector('.incoming-call-mobile').style.display = 'none';
+    
     call.on('stream', async (stream) => {
         console.log('Received remote stream');
-        if (!isCaller) {
-            stopRingtone();
-        }
+        stopRingtone();
         stopCallingTone();
         remoteStream = stream;
         
-        try {
-            // Set remote stream to main video if local stream is in PIP
-            if (isLocalStreamMain) {
-                mainVideo.srcObject = remoteStream;
-                pipVideo.srcObject = localStream;
-            } else {
-                pipVideo.srcObject = remoteStream;
-                mainVideo.srcObject = localStream;
+        if (call.peerConnection) {
+            const sender = call.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+                const params = sender.getParameters();
+                params.encodings = [{
+                    maxBitrate: 2500000,
+                    maxFramerate: 30,
+                    scaleResolutionDownBy: 1.0
+                }];
+                await sender.setParameters(params);
             }
-            
-            // Ensure video tracks are enabled
-            stream.getVideoTracks().forEach(track => track.enabled = true);
-            stream.getAudioTracks().forEach(track => track.enabled = true);
-            
-            // Setup quality monitoring
-            if (call.peerConnection) {
-                setupConnectionQualityHandling(call.peerConnection);
-                monitorStreamQuality(call.peerConnection);
-            }
-            
-            updateStatus('Connected');
-        } catch (error) {
-            console.error('Stream error:', error);
-            updateStatus('Stream connection failed');
+            // Monitor connection quality
+            let lastPacketLoss = 0;
+            setInterval(async () => {
+                const stats = await call.peerConnection.getStats();
+                stats.forEach(report => {
+                    if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                        const packetLoss = report.packetsLost - lastPacketLoss;
+                        lastPacketLoss = report.packetsLost;
+                        
+                        if (packetLoss > 0) {
+                            adjustQuality('low');
+                        } else {
+                            adjustQuality('high');
+                        }
+                    }
+                });
+            }, 2000);
         }
+
+        // Update video displays
+        if (isLocalStreamMain) {
+            mainVideo.srcObject = remoteStream;
+            pipVideo.srcObject = localStream;
+        } else {
+            pipVideo.srcObject = remoteStream;
+            mainVideo.srcObject = localStream;
+        }
+
+        updateStatus('Connected');
     });
 
     call.on('close', () => {
-        clearInterval(statsInterval);
         cleanup();
         updateStatus('Call ended');
-        stopCallingTone();
-        stopRingtone();
     });
 
     call.on('error', (err) => {
         console.error('Call error:', err);
         cleanup();
-        // Close modals on error
-        hideModal(document.getElementById('incoming-call-modal'));
-        document.querySelector('.incoming-call-mobile').style.display = 'none';
-        updateStatus('Call error occurred');
-        stopCallingTone();
-        stopRingtone();
+        updateStatus('Call failed');
     });
 }
-
-
-
-
 
 // Setup connection quality handling
 function setupConnectionQualityHandling(peerConnection) {
@@ -981,32 +986,44 @@ function monitorStreamQuality(peerConnection) {
     });
 }
 
-async function adjustMediaQuality(bandwidth) {
+async function adjustQuality(quality) {
     if (!currentCall?.peerConnection) return;
     
     const videoSender = currentCall.peerConnection.getSenders()
         .find(s => s.track?.kind === 'video');
     
-    if (videoSender) {
-        const parameters = videoSender.getParameters();
-        if (!parameters.encodings) parameters.encodings = [{}];
-        
-        if (bandwidth < 1) {
-            parameters.encodings[0].maxBitrate = 250000;
-            parameters.encodings[0].scaleResolutionDownBy = 2.0;
-        } else if (bandwidth < 2) {
-            parameters.encodings[0].maxBitrate = 500000;
-            parameters.encodings[0].scaleResolutionDownBy = 1.5;
-        } else {
-            parameters.encodings[0].maxBitrate = 2500000;
-            parameters.encodings[0].scaleResolutionDownBy = 1.0;
-        }
-        
-        try {
-            await videoSender.setParameters(parameters);
-        } catch (error) {
-            console.error('Failed to update encoding parameters:', error);
-        }
+    if (!videoSender) return;
+
+    const parameters = videoSender.getParameters();
+    
+    switch(quality) {
+        case 'high':
+            parameters.encodings = [{
+                maxBitrate: 2500000,
+                maxFramerate: 30,
+                scaleResolutionDownBy: 1.0
+            }];
+            break;
+        case 'medium':
+            parameters.encodings = [{
+                maxBitrate: 1000000,
+                maxFramerate: 24,
+                scaleResolutionDownBy: 1.5
+            }];
+            break;
+        case 'low':
+            parameters.encodings = [{
+                maxBitrate: 500000,
+                maxFramerate: 15,
+                scaleResolutionDownBy: 2.0
+            }];
+            break;
+    }
+    
+    try {
+        await videoSender.setParameters(parameters);
+    } catch (error) {
+        console.error('Failed to adjust quality:', error);
     }
 }
 
