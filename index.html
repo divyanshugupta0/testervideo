@@ -529,6 +529,30 @@ const rejectCallBtn = document.getElementById('reject-call');
 const videoGrid = document.querySelector('.video-grid');
 
 
+// Add at the start of your script
+const VIDEO_QUALITY_PROFILES = {
+    high: {
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 60 },
+        bitrate: 2500000
+    },
+    medium: {
+        width: { ideal: 640, max: 1280 },
+        height: { ideal: 480, max: 720 },
+        frameRate: { ideal: 24, max: 30 },
+        bitrate: 1000000
+    },
+    low: {
+        width: { ideal: 320, max: 640 },
+        height: { ideal: 240, max: 480 },
+        frameRate: { ideal: 15, max: 24 },
+        bitrate: 500000
+    }
+};
+
+
+
 
 // Initialize PeerJS connection
 function initializePeer() {
@@ -647,44 +671,99 @@ async function setupMediaStream() {
     try {
         const constraints = {
             video: !isAudioOnly ? {
-                width: { ideal: 640, max: 1280 },
-                height: { ideal: 480, max: 720 },
-                frameRate: { ideal: 24, max: 30 },
-                facingMode: currentCameraFacing
+                ...VIDEO_QUALITY_PROFILES.high,
+                facingMode: currentCameraFacing,
+                aspectRatio: { ideal: 1.7777777778 }
             } : false,
             audio: {
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true
+                autoGainControl: true,
+                sampleRate: 48000,
+                channelCount: 2
             }
         };
 
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
         
         if (localStream) {
-            pipVideo.srcObject = localStream;
-            pipVideo.muted = true;
-            await pipVideo.play().catch(console.error);
-            updateStatus('Media ready');
+            // Apply encoding parameters
+            if (currentCall?.peerConnection) {
+                const sender = currentCall.peerConnection.getSenders()
+                    .find(s => s.track?.kind === 'video');
+                if (sender) {
+                    const params = sender.getParameters();
+                    params.encodings = [{
+                        maxBitrate: VIDEO_QUALITY_PROFILES.high.bitrate,
+                        maxFramerate: VIDEO_QUALITY_PROFILES.high.frameRate.ideal
+                    }];
+                    await sender.setParameters(params);
+                }
+            }
+
+            // Setup bandwidth estimation
+            setupBandwidthMonitoring();
             return true;
         }
         return false;
-
     } catch (error) {
         console.error('Media setup error:', error);
-        let errorMessage = 'Failed to access media devices';
-        if (error.name === 'NotAllowedError') {
-            errorMessage = 'Camera/Microphone permission denied';
-        } else if (error.name === 'NotFoundError') {
-            errorMessage = 'No camera/microphone found';
-        } else if (error.name === 'NotReadableError') {
-            errorMessage = 'Camera/Microphone is already in use';
-        }
-        updateStatus(errorMessage);
         return false;
     }
 }
 
+
+function setupBandwidthMonitoring() {
+    if (!currentCall?.peerConnection) return;
+
+    let lastResult;
+    const bitrateInterval = setInterval(async () => {
+        try {
+            const stats = await currentCall.peerConnection.getStats();
+            stats.forEach(report => {
+                if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                    const now = report.timestamp;
+                    const bytes = report.bytesReceived;
+                    if (lastResult && lastResult.has(report.id)) {
+                        const bitrate = 8 * (bytes - lastResult.get(report.id).bytesReceived) /
+                            (now - lastResult.get(report.id).timestamp);
+                        
+                        // Adapt quality based on bitrate
+                        if (bitrate < 500000) {
+                            adaptQuality('low');
+                        } else if (bitrate < 1500000) {
+                            adaptQuality('medium');
+                        } else {
+                            adaptQuality('high');
+                        }
+                    }
+                    lastResult = stats;
+                }
+            });
+        } catch (error) {
+            console.error('Bandwidth monitoring error:', error);
+        }
+    }, 1000);
+
+    currentCall.on('close', () => clearInterval(bitrateInterval));
+}
+
+async function adaptQuality(profile) {
+    if (!currentCall?.peerConnection) return;
+
+    const sender = currentCall.peerConnection.getSenders()
+        .find(s => s.track?.kind === 'video');
+    
+    if (sender) {
+        const params = sender.getParameters();
+        params.encodings = [{
+            maxBitrate: VIDEO_QUALITY_PROFILES[profile].bitrate,
+            maxFramerate: VIDEO_QUALITY_PROFILES[profile].frameRate.ideal,
+            scaleResolutionDownBy: profile === 'low' ? 2 : 1
+        }];
+        await sender.setParameters(params);
+    }
+}
 
 
 async function checkMediaPermissions() {
@@ -971,27 +1050,57 @@ async function switchCamera() {
             return;
         }
 
+        // Store current stream positions
+        const mainStreamIsLocal = mainVideo.srcObject === localStream;
+        const pipStreamIsLocal = pipVideo.srcObject === localStream;
+        
+        // Store current audio track
+        const audioTrack = localStream.getAudioTracks()[0];
+        
+        // Stop current video track only
+        localStream.getVideoTracks().forEach(track => track.stop());
+        
         currentCameraFacing = currentCameraFacing === 'user' ? 'environment' : 'user';
         
+        // Get new stream with only video
         const newStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: currentCameraFacing },
-            audio: localStream.getAudioTracks().length > 0
+            video: { 
+                facingMode: currentCameraFacing,
+                width: { ideal: 640, max: 1280 },
+                height: { ideal: 480, max: 720 },
+                frameRate: { ideal: 24, max: 30 }
+            },
+            audio: false
         });
 
-        const [videoTrack] = newStream.getVideoTracks();
-        const [oldVideoTrack] = localStream.getVideoTracks();
-        localStream.removeTrack(oldVideoTrack);
-        localStream.addTrack(videoTrack);
+        // Replace video track in local stream
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        const oldVideoTrack = localStream.getVideoTracks()[0];
+        if (oldVideoTrack) {
+            localStream.removeTrack(oldVideoTrack);
+        }
+        localStream.addTrack(newVideoTrack);
 
-        pipVideo.srcObject = localStream;
+        // Maintain stream positions
+        if (mainStreamIsLocal) {
+            mainVideo.srcObject = localStream;
+        }
+        if (pipStreamIsLocal) {
+            pipVideo.srcObject = localStream;
+        }
 
-        if (currentCall) {
-            const sender = currentCall.peerConnection.getSenders()
-                .find(s => s.track.kind === 'video');
-            if (sender) {
-                await sender.replaceTrack(videoTrack);
+        // Update call if active
+        if (currentCall && currentCall.peerConnection) {
+            const videoSender = currentCall.peerConnection.getSenders()
+                .find(s => s.track && s.track.kind === 'video');
+            if (videoSender) {
+                await videoSender.replaceTrack(newVideoTrack);
             }
         }
+
+        // Ensure video state is maintained
+        newVideoTrack.enabled = isVideoEnabled;
+
     } catch (error) {
         console.error('Camera switch failed:', error);
         updateStatus('Failed to switch camera');
